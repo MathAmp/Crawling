@@ -1,13 +1,10 @@
-import requests
-#import requests_async
 from pprint import pprint
 import re
-import asyncio
 from time import time
 import grequests
 
 records_per_page = 10
-max_concurrent_search_unit = 25
+max_concurrent_search_unit = 5
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
 record_start = '<tr'
 record_end = '</tr>'
@@ -33,44 +30,31 @@ def timer(func):
 
 def search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    with requests.Session() as session:
-        req = session.post(url, search_info)
-    return req.text
-
-
-async def _concurrent_search(subject_id, page_no):
-    search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    async with requests_async.Session() as session:
-        async_req = await session.post(url, search_info)
-        return async_req.text, subject_id, page_no
-
-
-async def _gather_concurrent_search(partial_course_loc_list):
-    async_req_list = [asyncio.ensure_future(_concurrent_search(subject_id, page_no))
-                      for subject_id, page_no in partial_course_loc_list]
-    await asyncio.gather(*async_req_list)
-    return async_req_list
+    req_list = [grequests.post(url, data=search_info, stream=False)]
+    return get_html_text(grequests.map(req_list)[0])
 
 
 def request_concurrent_search(partial_course_loc_list):
-    loop = asyncio.get_event_loop()
-    ret = [req.result() for req in loop.run_until_complete(_gather_concurrent_search(partial_course_loc_list))]
-    return ret
+    req_list = [grequests.post(url, data={'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}, stream=False)
+                for subject_id, page_no in partial_course_loc_list]
+    return [(get_html_text(html), *course_loc) for html, course_loc
+            in zip(grequests.map(req_list), partial_course_loc_list)]
+
+
+def get_html_text(html):
+    text = html.text
+    html.close()
+    return text
 
 
 def get_multipage_info_list(course_loc_list):
+    #return [(search(*course_id), *course_id) for course_id in course_loc_list]
     return sum([request_concurrent_search(course_loc_list[partial_index: partial_index + max_concurrent_search_unit])
                 for partial_index in range(0, len(course_loc_list), max_concurrent_search_unit)], list())
 
 
-def get_multipage_info_list_g(course_loc_list):
-    rs = [grequests.post(url, data={'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no})
-          for subject_id, page_no in course_loc_list]
-    return [(html.text, *course_loc) for html, course_loc in zip(grequests.map(rs), course_loc_list)]
-
-
 def get_multipage_info_dict(course_loc_list):
-    return {(course_id, page_no): text for text, course_id, page_no in get_multipage_info_list_g(course_loc_list)}
+    return {(course_id, page_no): text for text, course_id, page_no in get_multipage_info_list(course_loc_list)}
 
 
 def multipage_search(subject_id):
@@ -78,7 +62,8 @@ def multipage_search(subject_id):
     pages = [search(subject_id, page_no_to_check)]
     target_page_no = find_max_page(pages[0])
     pages += [text for text, subject_id, page_no
-              in get_multipage_info_list_g([(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)])]
+              in get_multipage_info_list([(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)])]
+    #pages += [search(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)]
     return pages
 
 
