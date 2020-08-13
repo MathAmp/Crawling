@@ -28,7 +28,7 @@ def target_courses_to_course_loc_list(target_course_dict: dict):
 def run():
     time_list = list()
     course_loc_list = target_courses_to_course_loc_list(target_courses)
-    for i in range(100):
+    for i in range(1000):
         start = time()
         single_run(course_loc_list)
         time_list.append(time() - start)
