@@ -5,6 +5,7 @@ import re
 import asyncio
 import aiohttp
 from time import time
+from time import sleep
 
 records_per_page = 10
 max_concurrent_search_unit = 10
@@ -40,6 +41,14 @@ def search(subject_id, page_no):
     return req.text
 
 
+def wait_until_url_connect():
+    while True:
+        if search('', '1'):
+            return
+        else:
+            sleep(1)
+
+
 async def _concurrent_search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
     connector = aiohttp.TCPConnector(limit_per_host=30)
@@ -51,6 +60,13 @@ async def _concurrent_search(subject_id, page_no):
                 async_req.close()
                 return text, subject_id, page_no
         except asyncio.exceptions.TimeoutError:
+            return None, subject_id, page_no
+        except aiohttp.client_exceptions.ClientPayloadError:
+            print("ERORR")
+            return None, subject_id, page_no
+        except aiohttp.client_exceptions.ClientConnectorError:
+            print("Internet Disconnected")
+            wait_until_url_connect()
             return None, subject_id, page_no
 
 
@@ -66,6 +82,7 @@ def request_concurrent_search(partial_course_loc_list):
     asyncio.set_event_loop(loop)
     ret = [req.result() for req in loop.run_until_complete(_gather_concurrent_search(partial_course_loc_list))]
     loop.close()
+    del loop
     return ret
 
 

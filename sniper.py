@@ -29,8 +29,8 @@ def target_courses_to_course_loc_list(target_course_dict: dict):
 def run():
     time_list = list()
     course_loc_list = target_courses_to_course_loc_list(target_courses)
-    for i in range(20):
-        print(f"{i + 1} / {20}")
+    for i in range(10000):
+        print(f"{i + 1} / {10000}")
         time_list.append(single_run(course_loc_list))
     return time_list
 
