@@ -1,11 +1,12 @@
 from time import sleep
 from crawler import course_no_to_records
-from crawler import get_multipage_info_dict
-from crawler import get_valid_course_page_no
-from crawler import course_no_to_page_no
+from crawler import get_multipage_info_in_dict
+from crawler import union_course_page_no
+from crawler import convert_course_no_to_page_no
 # import emailer
 from configurations import target_courses
 from time import time
+from crawler import timer
 
 
 def course_identifier(subject_id, course_no):
@@ -21,24 +22,23 @@ def target_courses_to_course_id_list(target_course_dict: dict):
 
 
 def target_courses_to_course_loc_list(target_course_dict: dict):
-    return sum([get_valid_course_page_no(subject_id, course_no_list)
+    return sum([union_course_page_no(subject_id, course_no_list)
                 for subject_id, course_no_list in target_course_dict.items()], list())
 
 
 def run():
     time_list = list()
     course_loc_list = target_courses_to_course_loc_list(target_courses)
-    for i in range(10000):
-        print(f"{i + 1} / {10000}")
-        start = time()
-        single_run(course_loc_list)
-        time_list.append(time() - start)
+    for i in range(20):
+        print(f"{i + 1} / {20}")
+        time_list.append(single_run(course_loc_list))
     return time_list
 
 
+@timer
 def single_run(course_loc_list):
     # download course
-    course_loc_text_dict = get_multipage_info_dict(course_loc_list)
+    course_loc_text_dict = get_multipage_info_in_dict(course_loc_list)
 
     # analysis
     for subject_id in target_courses:
