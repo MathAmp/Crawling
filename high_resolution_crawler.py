@@ -28,14 +28,6 @@ async def _request_course_info(course_info_dict, regex_expression=master_regex):
     print(time.time())
 
 
-async def _wait(time_out=0.05):
-    await asyncio.sleep(time_out)
-
-
-async def _request_course_info_with_time_limit(course_info_dict, time_out=0.05, regex_expression=master_regex):
-    await asyncio.gather(_wait(time_out), _request_course_info(course_info_dict, regex_expression))
-
-
 async def _main(course_info_dict):
     await asyncio.gather(*[_request_course_info_with_time_limit(course_info_dict) for _ in range(5)])
 

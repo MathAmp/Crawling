@@ -1,7 +1,11 @@
 from time import sleep
 from crawler import course_no_to_records
-import emailer
+from crawler import get_multipage_info_dict
+from crawler import get_valid_course_page_no
+from crawler import course_no_to_page_no
+# import emailer
 from configurations import target_courses
+from time import time
 
 
 def course_identifier(subject_id, course_no):
@@ -10,12 +14,39 @@ def course_identifier(subject_id, course_no):
 
 initial_registrant_counts = {}
 
-while True:
+
+def target_courses_to_course_id_list(target_course_dict: dict):
+    return sum([[course_identifier(subject_id, course_no) for course_no in course_no_list]
+                for subject_id, course_no_list in target_course_dict.items()], list())
+
+
+def target_courses_to_course_loc_list(target_course_dict: dict):
+    return sum([get_valid_course_page_no(subject_id, course_no_list)
+                for subject_id, course_no_list in target_course_dict.items()], list())
+
+
+def run():
+    time_list = list()
+    course_loc_list = target_courses_to_course_loc_list(target_courses)
+    for i in range(100):
+        start = time()
+        single_run(course_loc_list)
+        time_list.append(time() - start)
+    return time_list
+
+
+def single_run(course_loc_list):
+    # download course
+    course_loc_text_dict = get_multipage_info_dict(course_loc_list)
+
+    # analysis
     for subject_id in target_courses:
         print(f"{subject_id} 확인중")
         # 모든 강좌번호에 대해 검색해서 결과 저장하기
         course_nos = target_courses[subject_id]
-        records = course_no_to_records(subject_id, course_nos)
+        # print(course_nos)
+        records = course_no_to_records(subject_id, course_nos, course_loc_text_dict)
+        # print(records)
 
         for record in records:
             course_id = course_identifier(subject_id, record['강좌번호'])
@@ -29,4 +60,4 @@ while True:
                     print('Message Sent!')
                     initial_registrant_counts[course_id] = registrant_count
     print(initial_registrant_counts)
-    sleep(3)
+    # sleep(3)
