@@ -1,10 +1,14 @@
+import requests
+import requests_async
 from pprint import pprint
 import re
+import asyncio
+import aiohttp
 from time import time
-import grequests
 
 records_per_page = 10
-max_concurrent_search_unit = 5
+max_concurrent_search_unit = 10
+html_info_request_timeout_limit = 2
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
 record_start = '<tr'
 record_end = '</tr>'
@@ -24,37 +28,54 @@ def timer(func):
         func(*args, **kwargs)
         end = time()
         print(f"{func.__name__} is executed in {end - start}s")
+        return end - start
 
     return wrapper
 
 
 def search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    req_list = [grequests.post(url, data=search_info, stream=False)]
-    return get_html_text(grequests.map(req_list)[0])
+    with requests.Session() as session:
+        req = session.post(url, search_info)
+    return req.text
+
+
+async def _concurrent_search(subject_id, page_no):
+    search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
+    connector = aiohttp.TCPConnector(limit_per_host=30)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        try:
+            async with session.post(url, data=search_info, timeout=html_info_request_timeout_limit) as async_req:
+                text = await async_req.text()
+                await session.close()
+                async_req.close()
+                return text, subject_id, page_no
+        except asyncio.exceptions.TimeoutError:
+            return None, subject_id, page_no
+
+
+async def _gather_concurrent_search(partial_course_loc_list):
+    async_req_list = [asyncio.ensure_future(_concurrent_search(subject_id, page_no))
+                      for subject_id, page_no in partial_course_loc_list]
+    await asyncio.gather(*async_req_list)
+    return async_req_list
 
 
 def request_concurrent_search(partial_course_loc_list):
-    req_list = [grequests.post(url, data={'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}, stream=False)
-                for subject_id, page_no in partial_course_loc_list]
-    return [(get_html_text(html), *course_loc) for html, course_loc
-            in zip(grequests.map(req_list), partial_course_loc_list)]
+    loop = asyncio.ProactorEventLoop()
+    asyncio.set_event_loop(loop)
+    ret = [req.result() for req in loop.run_until_complete(_gather_concurrent_search(partial_course_loc_list))]
+    loop.close()
+    return ret
 
 
-def get_html_text(html):
-    text = html.text
-    html.close()
-    return text
-
-
-def get_multipage_info_list(course_loc_list):
-    #return [(search(*course_id), *course_id) for course_id in course_loc_list]
+def get_multipage_info_in_list(course_loc_list):
     return sum([request_concurrent_search(course_loc_list[partial_index: partial_index + max_concurrent_search_unit])
                 for partial_index in range(0, len(course_loc_list), max_concurrent_search_unit)], list())
 
 
-def get_multipage_info_dict(course_loc_list):
-    return {(course_id, page_no): text for text, course_id, page_no in get_multipage_info_list(course_loc_list)}
+def get_multipage_info_in_dict(course_loc_list):
+    return {(course_id, page_no): text for text, course_id, page_no in get_multipage_info_in_list(course_loc_list)}
 
 
 def multipage_search(subject_id):
@@ -62,19 +83,18 @@ def multipage_search(subject_id):
     pages = [search(subject_id, page_no_to_check)]
     target_page_no = find_max_page(pages[0])
     pages += [text for text, subject_id, page_no
-              in get_multipage_info_list([(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)])]
-    #pages += [search(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)]
+              in get_multipage_info_in_list([(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)])]
     return pages
 
 
-def get_valid_course_page_no(subject_id, course_no_list):
-    return list(set([(subject_id, course_no_to_page_no(course_no)) for course_no in course_no_list]))
+def union_course_page_no(subject_id, course_no_list):
+    return list(set([(subject_id, convert_course_no_to_page_no(course_no)) for course_no in course_no_list]))
 
 
 def course_no_search(subject_id, course_nos):
     page_no_set = set()
     for course_no in course_nos:
-        page_no_set.add(course_no_to_page_no(course_no))
+        page_no_set.add(convert_course_no_to_page_no(course_no))
 
     pages = []
     for page_no in page_no_set:
@@ -87,10 +107,10 @@ def find_max_page(html_text):
     pattern_matches = pattern.findall(html_text)
     assert len(pattern_matches) == 1
     record_count = int(pattern_matches[0])  # == last course number
-    return course_no_to_page_no(record_count)
+    return convert_course_no_to_page_no(record_count)
 
 
-def course_no_to_page_no(course_no):
+def convert_course_no_to_page_no(course_no):
     return (int(course_no) + records_per_page - 1) // records_per_page
 
 
@@ -146,18 +166,20 @@ def parse_record(record_text):
 
 
 def course_id_list_to_records(course_id_list, html_text_dict):
-    return {course_id: parse_record(html_text_dict[course_no_to_page_no(course_id)]) for course_id in course_id_list}
+    return {course_id: parse_record(html_text_dict[convert_course_no_to_page_no(course_id)]) for course_id in course_id_list}
 
 
 def course_no_to_records(subject_id, course_nos, course_loc_text_dict):
-    all_records = list()
+    all_records_dict = dict()   # dict: course_id -> record
     for course_no in course_nos:
-        html_text = course_loc_text_dict[(subject_id, course_no_to_page_no(course_no))]
-        all_record_texts = extract_records(html_text)
-        all_records += [parse_record(record_text) for record_text in all_record_texts]
-
-    filtered_records = [record for record in all_records if int(record['강좌번호']) in course_nos]
-    return filtered_records
+        html_text = course_loc_text_dict[subject_id, convert_course_no_to_page_no(course_no)]
+        if html_text:   # None if aiohttp request fail(timeout 3sec
+            all_record_texts = extract_records(html_text)
+            for record_text in all_record_texts:
+                record = parse_record(record_text)
+                all_records_dict[record['교과목번호'], int(record['강좌번호'])] = record
+    return [all_records_dict[subject_id, int(course_no)] for course_no in course_nos
+            if (subject_id, int(course_no)) in all_records_dict]
 
 
 @timer
