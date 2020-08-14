@@ -1,15 +1,12 @@
 import requests
-import requests_async
 from pprint import pprint
 import re
-import asyncio
-import aiohttp
 from time import time
 from time import sleep
+from Tool import timer
+
 
 records_per_page = 10
-max_concurrent_search_unit = 50
-html_info_request_timeout_limit = 2
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
 record_start = '<tr'
 record_end = '</tr>'
@@ -20,18 +17,6 @@ fields = ['교과구분', '개설대학', '개설학과', '이수과정', '학�
           '수강신청인원', '비고']
 
 url = 'http://sugang.snu.ac.kr/sugang/cc/cc100.action'
-
-
-def timer(func):
-
-    def wrapper(*args, **kwargs):
-        start = time()
-        func(*args, **kwargs)
-        end = time()
-        print(f"{func.__name__} is executed in {end - start}s")
-        return end - start
-
-    return wrapper
 
 
 def search(subject_id, page_no):
@@ -49,56 +34,14 @@ def wait_until_url_connect():
             sleep(1)
 
 
-async def _concurrent_search(subject_id, page_no):
-    search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    connector = aiohttp.TCPConnector(limit_per_host=60)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        try:
-            async with session.post(url, data=search_info, timeout=html_info_request_timeout_limit) as async_req:
-                text = await async_req.text()
-                await session.close()
-                async_req.close()
-                return text, subject_id, page_no
-        except asyncio.exceptions.TimeoutError:
-            return None, subject_id, page_no
-        except aiohttp.client_exceptions.ClientPayloadError:
-            print("ERORR")
-            return None, subject_id, page_no
-        except aiohttp.client_exceptions.ClientConnectorError:
-            print("Internet Disconnected")
-            wait_until_url_connect()
-            return None, subject_id, page_no
-
-
-async def _gather_concurrent_search(partial_course_loc_list):
-    async_req_list = [asyncio.ensure_future(_concurrent_search(subject_id, page_no))
-                      for subject_id, page_no in partial_course_loc_list]
-    await asyncio.gather(*async_req_list)
-    return async_req_list
-
-
-def request_concurrent_search(partial_course_loc_list):
-    loop = asyncio.SelectorEventLoop()
-    asyncio.set_event_loop(loop)
-    ret = [req.result() for req in loop.run_until_complete(_gather_concurrent_search(partial_course_loc_list))]
-    loop.close()
-    del loop
-    return ret
-
-
-def get_multipage_info_in_list(course_loc_list):
-    return sum([request_concurrent_search(course_loc_list[partial_index: partial_index + max_concurrent_search_unit])
-                for partial_index in range(0, len(course_loc_list), max_concurrent_search_unit)], list())
-
-
-def get_multipage_info_in_dict(course_loc_list):
-    return {(course_id, page_no): text for text, course_id, page_no in get_multipage_info_in_list(course_loc_list)}
-
-
 def multipage_search(subject_id):
     page_no_to_check = 1    # first page
-    pages = [search(subject_id, page_no_to_check)]
-    target_page_no = find_max_page(pages[0])
+    while True:
+        first_page = search(subject_id, page_no_to_check)
+        target_page_no = find_max_page(first_page)
+        if target_page_no:
+            break
+    pages = [first_page]
     pages += [text for text, subject_id, page_no
               in get_multipage_info_in_list([(subject_id, str(page_no)) for page_no in range(2, target_page_no + 1)])]
     return pages
@@ -122,9 +65,11 @@ def course_no_search(subject_id, course_nos):
 def find_max_page(html_text):
     pattern = re.compile(search_result_count_regex)
     pattern_matches = pattern.findall(html_text)
-    assert len(pattern_matches) == 1
-    record_count = int(pattern_matches[0])  # == last course number
-    return convert_course_no_to_page_no(record_count)
+    if pattern_matches:
+        record_count = int(pattern_matches[0])  # == last course number
+        return convert_course_no_to_page_no(record_count)
+    else:
+        return None
 
 
 def convert_course_no_to_page_no(course_no):
