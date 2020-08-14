@@ -8,7 +8,7 @@ from time import time
 from time import sleep
 
 records_per_page = 10
-max_concurrent_search_unit = 25
+max_concurrent_search_unit = 50
 html_info_request_timeout_limit = 2
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
 record_start = '<tr'
@@ -51,7 +51,7 @@ def wait_until_url_connect():
 
 async def _concurrent_search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    connector = aiohttp.TCPConnector(limit_per_host=50)
+    connector = aiohttp.TCPConnector(limit_per_host=60)
     async with aiohttp.ClientSession(connector=connector) as session:
         try:
             async with session.post(url, data=search_info, timeout=html_info_request_timeout_limit) as async_req:
