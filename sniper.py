@@ -13,9 +13,6 @@ def course_identifier(subject_id, course_no):
     return subject_id, course_no
 
 
-initial_registrant_counts = {}
-
-
 def target_courses_to_course_id_list(target_course_dict: dict):
     return sum([[course_identifier(subject_id, course_no) for course_no in course_no_list]
                 for subject_id, course_no_list in target_course_dict.items()], list())
@@ -28,15 +25,16 @@ def target_courses_to_course_loc_list(target_course_dict: dict):
 
 def run():
     time_list = list()
+    initial_registrant_counts = dict()
     course_loc_list = target_courses_to_course_loc_list(target_courses)
     for i in range(10000):
         print(f"{i + 1} / {10000}")
-        time_list.append(single_run(course_loc_list))
+        time_list.append(single_run(course_loc_list, initial_registrant_counts))
     return time_list
 
 
 @timer
-def single_run(course_loc_list):
+def single_run(course_loc_list, initial_registrant_counts):
     # download course
     course_loc_text_dict = get_multipage_info_in_dict(course_loc_list)
 
@@ -57,9 +55,11 @@ def single_run(course_loc_list):
                 initial_registrant_counts[course_id] = registrant_count
             else:
                 if registrant_count < initial_registrant_counts[course_id]:
-                    emailer.send(f"{subject_id} 빈자리 알림",
-                                 f"{subject_id}의 {record['강좌번호']} 분반에 자리가 확인되었습니다.\n\n"
-                                 f">> sugang.snu.ac.kr")
+                    emailer.send(f"[{record['교과목명']}] 빈자리 알림",
+                                 f"[{record['교과목명']}]의 ({record['강좌번호']}) 분반에 자리가 확인되었습니다.\n\n"
+                                 f"현재상태:\n    수강신청인원: {registrant_count} "
+                                 f"// 정원(재학생): {record['정원(재학생)']}"
+                                 f"\n\nsugang.snu.ac.kr")
                     print('Message Sent!')
-                    initial_registrant_counts[course_id] = registrant_count
+                initial_registrant_counts[course_id] = registrant_count
     print(initial_registrant_counts)
