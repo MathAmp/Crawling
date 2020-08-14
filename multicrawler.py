@@ -1,9 +1,8 @@
 import asyncio
 import aiohttp
 from time import time
-from crawler import url
-from crawler import search
 from concurrent.futures import ThreadPoolExecutor
+from Tool import url
 
 max_concurrent_search_unit = 120
 html_info_request_timeout_limit = 2
@@ -11,7 +10,7 @@ html_info_request_timeout_limit = 2
 
 async def _concurrent_search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    connector = aiohttp.TCPConnector(limit_per_host=130, force_close=True, use_dns_cache=False)
+    connector = aiohttp.TCPConnector(limit_per_host=max_concurrent_search_unit, force_close=True, use_dns_cache=False)
     async with aiohttp.ClientSession(connector=connector) as session:
         text = None
         try:
@@ -47,14 +46,11 @@ def request_concurrent_search(partial_course_loc_list):
     return ret
 
 
-def get_multipage_info_in_list(course_loc_list, concurrent=True):
-    if concurrent:
-        return sum([request_concurrent_search(course_loc_list[partial_index: partial_index + max_concurrent_search_unit])
-                    for partial_index in range(0, len(course_loc_list), max_concurrent_search_unit)], list())
-    else:
-        return [(search(*course_loc), *course_loc) for course_loc in course_loc_list]
+def get_multipage_info_in_list(course_loc_list):
+    return sum([request_concurrent_search(course_loc_list[partial_index: partial_index + max_concurrent_search_unit])
+                for partial_index in range(0, len(course_loc_list), max_concurrent_search_unit)], list())
 
 
-def get_multipage_info_in_dict(course_loc_list, concurrent=True):
+def get_multipage_info_in_dict(course_loc_list):
     return {(course_id, page_no): text for text, course_id, page_no
-            in get_multipage_info_in_list(course_loc_list, concurrent)}
+            in get_multipage_info_in_list(course_loc_list)}

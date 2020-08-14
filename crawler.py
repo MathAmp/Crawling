@@ -4,7 +4,8 @@ import re
 from time import time
 from time import sleep
 from Tool import timer
-
+from multicrawler import get_multipage_info_in_list
+from Tool import url
 
 records_per_page = 10
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
@@ -15,8 +16,6 @@ search_result_count_regex = r'검색건수\s*<span.*>(\d+)</span>\s*건'
 fields = ['교과구분', '개설대학', '개설학과', '이수과정', '학년', '교과목번호', '강좌번호', '교과목명',
           '학점-강의-실습', '수업교시', '수업형태', '강의실', '주담당교수', '강의계획서', '정원(재학생)',
           '수강신청인원', '비고']
-
-url = 'http://sugang.snu.ac.kr/sugang/cc/cc100.action'
 
 
 def search(subject_id, page_no):
@@ -146,7 +145,7 @@ def course_no_to_records(subject_id, course_nos, course_loc_text_dict):
 
 @timer
 def main():
-    target_subject_id = ''
+    target_subject_id = 'L0440.000600'
     #target_course_nos = [3, 13, 23]
     #records = course_no_to_records(target_subject_id, target_course_nos)
     multipage_search(target_subject_id)
