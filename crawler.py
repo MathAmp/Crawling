@@ -8,7 +8,7 @@ from time import time
 from time import sleep
 
 records_per_page = 10
-max_concurrent_search_unit = 10
+max_concurrent_search_unit = 25
 html_info_request_timeout_limit = 2
 bait_regex = r'\d+ \(\d+\)'  # 정원 (재학생)
 record_start = '<tr'
@@ -51,7 +51,7 @@ def wait_until_url_connect():
 
 async def _concurrent_search(subject_id, page_no):
     search_info = {'srchSbjtCd': subject_id, 'workType': 'S', 'pageNo': page_no}
-    connector = aiohttp.TCPConnector(limit_per_host=30)
+    connector = aiohttp.TCPConnector(limit_per_host=50)
     async with aiohttp.ClientSession(connector=connector) as session:
         try:
             async with session.post(url, data=search_info, timeout=html_info_request_timeout_limit) as async_req:
@@ -78,7 +78,7 @@ async def _gather_concurrent_search(partial_course_loc_list):
 
 
 def request_concurrent_search(partial_course_loc_list):
-    loop = asyncio.ProactorEventLoop()
+    loop = asyncio.SelectorEventLoop()
     asyncio.set_event_loop(loop)
     ret = [req.result() for req in loop.run_until_complete(_gather_concurrent_search(partial_course_loc_list))]
     loop.close()
@@ -201,7 +201,7 @@ def course_no_to_records(subject_id, course_nos, course_loc_text_dict):
 
 @timer
 def main():
-    target_subject_id = 'L0440.000600'
+    target_subject_id = ''
     #target_course_nos = [3, 13, 23]
     #records = course_no_to_records(target_subject_id, target_course_nos)
     multipage_search(target_subject_id)

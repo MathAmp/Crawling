@@ -3,7 +3,7 @@ from crawler import course_no_to_records
 from crawler import get_multipage_info_in_dict
 from crawler import union_course_page_no
 from crawler import convert_course_no_to_page_no
-# import emailer
+import emailer
 from configurations import target_courses
 from time import time
 from crawler import timer
@@ -59,7 +59,7 @@ def single_run(course_loc_list):
                 if registrant_count < initial_registrant_counts[course_id]:
                     emailer.send(f"{subject_id} 빈자리 알림",
                                  f"{subject_id}의 {record['강좌번호']} 분반에 자리가 확인되었습니다.\n\n"
-                                 f"sugang.snu.ac.kr")
+                                 f">> sugang.snu.ac.kr")
                     print('Message Sent!')
                     initial_registrant_counts[course_id] = registrant_count
     print(initial_registrant_counts)
