@@ -1,12 +1,12 @@
 from time import sleep
 from crawler import course_no_to_records
-from crawler import get_multipage_info_in_dict
 from crawler import union_course_page_no
 from crawler import convert_course_no_to_page_no
-import emailer
+from multicrawler import get_multipage_info_in_dict
 from configurations import target_courses
 from time import time
-from crawler import timer
+from Tool import timer
+import emailer
 
 
 def course_identifier(subject_id, course_no):
