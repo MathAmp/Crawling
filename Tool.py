@@ -1,5 +1,7 @@
 from time import time
 
+url = 'http://sugang.snu.ac.kr/sugang/cc/cc100.action'
+
 
 def timer(func):
 
